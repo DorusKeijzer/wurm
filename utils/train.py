@@ -14,11 +14,6 @@ from time import perf_counter
 
 
 class trainer:
-    best_accuracy = 0
-    best_model = None
-    accuracies = []
-    losses = []
-
     def __init__(self, model, train_dataloader, test_dataloader, val_dataloader, num_epochs):
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
@@ -29,6 +24,14 @@ class trainer:
         self.num_epochs = num_epochs
         print(f"Training on {self.device}")
 
+        self.best_accuracy = 0
+        self.best_model = None
+        self.accuracies = []
+        self.losses = []
+
+    def add_optimizer(self, optimizer):
+        self.optimizer = optimizer
+
     def add_criterion(self, criterion):
         self.criterion = criterion
 
@@ -38,9 +41,25 @@ class trainer:
     def addmodel(self, model):
         self.model = model
 
+    def get_model_summary_as_string(self, input_size):
+        # Redirect stdout to capture the summary
+        buffer = io.StringIO()
+        sys.stdout = buffer
+
+        summary(self.model, input_size=input_size)
+
+        # Reset stdout
+        sys.stdout = sys.__stdout__
+
+        # Get the summary string from buffer
+        summary_str = buffer.getvalue()
+        buffer.close()
+
+        return summary_str
+
     def post_training(self):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        plot = plot_loss_and_accuracy(losses, accuracies)
+        plot = plot_loss_and_accuracy(self.losses, self.accuracies)
         resultsdir = os.path.join(os.getcwd(), "results")
         newdir = os.path.join(resultsdir, f"{timestamp}")
         os.mkdir(newdir)
@@ -48,7 +67,7 @@ class trainer:
         fig_filename = os.path.join(newdir, "loss.png")
         plot.savefig(fig_filename)
 
-        self.self.model.eval()  # Set the model to evaluation mode
+        self.model.eval()  # Set the model to evaluation mode
         correct = 0
         total = 0
         with torch.no_grad():
@@ -56,7 +75,7 @@ class trainer:
 
                 images, labels = images.to(self.device), labels.to(
                     self.device)  # Move data to the appropriate device
-                outputs = self.self.model(images)
+                outputs = self.model(images)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
@@ -64,40 +83,24 @@ class trainer:
         print(f"Accuracy of the self.model on the test images: {
               100 * correct / total:.2f}")
 
-        def get_self.model_summary_as_string(model, input_size):
-            # Redirect stdout to capture the summary
-            buffer = io.StringIO()
-            sys.stdout = buffer
-
-            summary(self.model, input_size=input_size)
-
-            # Reset stdout
-            sys.stdout = sys.__stdout__
-
-            # Get the summary string from buffer
-            summary_str = buffer.getvalue()
-            buffer.close()
-
-            return summary_str
-
-        sum = get_self.model_summary_as_string(model, (3, 224, 224))
+        sum = self.get_model_summary_as_string((3, 224, 224))
 
         res_filename = os.path.join(newdir, "results.txt")
         with open(res_filename, "w") as t:
             t.write(sum)
 
             t.write("---------------------------------------------\n")
-            t.write(f"Optimizer: {optimizer.__class__.__name__}\n")
-            t.write(f"Scheduler: {scheduler.__class__.__name__}\n")
-            t.write(f"Loss: {criterion.__class__.__name__}\n")
+            t.write(f"Optimizer: {self.optimizer.__class__.__name__}\n")
+            t.write(f"Scheduler: {self.scheduler.__class__.__name__}\n")
+            t.write(f"Loss: {self.criterion.__class__.__name__}\n")
             t.write("---------------------------------------------\n\n")
             t.write(f"\n\nTest accuracy: {100 * correct / total:.2f}%\n")
 
-            t.write(f"Loss over time: {losses}\n")
-            t.write(f"Accuracies over time: {accuracies}\n\n")
-            t.write(f"Best accuracy {best_accuracy}")
+            t.write(f"Loss over time: {self.losses}\n")
+            t.write(f"Accuracies over time: {self.accuracies}\n\n")
+            t.write(f"Best accuracy {self.best_accuracy}")
 
-        self.model_filename = os.path.join(newdir, "last_model.pth")
+        model_filename = os.path.join(newdir, "last_model.pth")
         best_filename = os.path.join(newdir, "best_self.model.pth")
         torch.save(self.model.state_dict(), model_filename)
         torch.save(self.model.state_dict(), best_filename)
@@ -129,12 +132,12 @@ class trainer:
                 evaluate_self.model()
             elif choice == '3':
                 new_lr = float(input("Enter new learning rate: "))
-                for param_group in optimizer.param_groups:
+                for param_group in self.optimizer.param_groups:
                     param_group['lr'] = new_lr
                 print(f"Learning rate changed to {new_lr}")
             elif choice == '4':
                 print("Exiting training...")
-                post_training()
+                self.post_training()
                 sys.exit(0)
             elif choice == '5':
                 print("Exiting training...")
@@ -142,35 +145,25 @@ class trainer:
             else:
                 print("Invalid choice. Continuing training.")
 
-               self.model = Flower_model(525).to(self.device)
-
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(
-            self.model.parameters(), lr=0.001, weight_decay=0.0001)
-        scheduler = ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.8, patience=5)
-
-        losses = []
-        accuracies = []
-        old_lr = scheduler.get_last_lr()
+        old_lr = self.scheduler.get_last_lr()
         # Training loop
-        for epoch in range(num_epochs):
+        for epoch in range(self.num_epochs):
             start = perf_counter()
             self.model.train()  # Set the model to training mode
             running_loss = 0.0
-            for i, (images, labels) in enumerate(train_dataloader):
-                print(f"Epoch [ {epoch+1}/{num_epochs} ], Batch [ {
-                      i*train_dataloader.batch_size}/{len(train_dataloader.dataset)} ]", end="\r")
+            for i, (images, labels) in enumerate(self.train_dataloader):
+                print(f"Epoch [ {epoch+1}/{self.num_epochs} ], Batch [ {
+                      i*self.train_dataloader.batch_size}/{len(train_dataloader.dataset)} ]", end="\r")
                 if interrupted:
                     handle_interruption()
                     interrupted = False  # Reset the flag after handling
                 images, labels = images.to(self.device), labels.to(
                     self.device)  # Move data to the appropriate device
-                optimizer.zero_grad()  # Zero the parameter gradients
+                self.optimizer.zero_grad()  # Zero the parameter gradients
                 outputs = self.model(images)  # Forward pass
-                loss = criterion(outputs, labels)  # Compute the loss
+                loss = self.criterion(outputs, labels)  # Compute the loss
                 loss.backward()  # Backward pass
-                optimizer.step()  # Update the weights
+                self.optimizer.step()  # Update the weights
 
                 running_loss += loss.item()
 
@@ -184,7 +177,7 @@ class trainer:
                     images, labels = images.to(self.device), labels.to(
                         self.device)  # Move data to the appropriate device
                     outputs = self.model(images)
-                    loss = criterion(outputs, labels)
+                    loss = self.criterion(outputs, labels)
                     val_loss += loss.item()
 
                     _, predicted = torch.max(outputs.data, 1)
@@ -192,16 +185,16 @@ class trainer:
                     correct += (predicted == labels).sum().item()
 
             val_loss /= len(self.val_dataloader)
-            scheduler.step(val_loss)
+            self.scheduler.step(val_loss)
 
-            lr = scheduler.get_last_lr()
+            lr = self.scheduler.get_last_lr()
             loss = running_loss / len(self.train_dataloader)
             accuracy = 100 * correct / total
             if accuracy > self.best_accuracy:
-                best_accuracy = accuracy
+                self.best_accuracy = accuracy
                 self.best_model = self.model
-            losses.append(loss)
-            accuracies.append(accuracy)
+            self.losses.append(loss)
+            self.accuracies.append(accuracy)
 
             end = perf_counter()
 
@@ -218,4 +211,4 @@ class trainer:
                 old_lr = lr
                 print(f"Plateaued, decreased learning rate to {old_lr}")
             print("")
-        post_training()
+        self.post_training()
