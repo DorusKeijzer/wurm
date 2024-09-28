@@ -13,7 +13,7 @@ from utils import plot_loss_and_accuracy, format_time
 from time import perf_counter
 
 
-class trainer:
+class Trainer:
     def __init__(self, model, train_dataloader, test_dataloader, val_dataloader, num_epochs):
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader

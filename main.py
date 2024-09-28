@@ -1,7 +1,8 @@
 import argparse
 import importlib
-from utils.train import train
-from utils.test import test
+from utils.train import Trainer
+from utils.test import Tester
+import torch
 
 
 def load_model(model_name):
@@ -20,34 +21,83 @@ def load_model(model_name):
 
 
 def main():
+    # Argument parsing
     parser = argparse.ArgumentParser(description="Train a specified model.")
     parser.add_argument('--train', action='store_true',
                         help="Flag to train the model.")
     parser.add_argument('--model', type=str, required=True,
                         help="Specify the model name (e.g., 'model_a').")
-    parser.add_argument('--test', action='store_true',
-                        help="Flag to test the model.")
+    parser.add_argument('--epochs', type=int, default=10,
+                        help="Number of epochs to train (default: 10).")
+    parser.add_argument('--optimizer', type=str, default='adam',
+                        choices=['adam', 'sgd', 'rmsprop', 'adamw'],
+                        help="Optimizer to use (default: 'adam').")
+    parser.add_argument('--learning-rate', type=float, default=0.001,
+                        help="Learning rate for the optimizer (default: 0.001).")
+    parser.add_argument('--scheduler', type=str, default=None,
+                        choices=['step', 'exponential', 'cosine'],
+                        help="Learning rate scheduler to use (default: None).")
+    parser.add_argument('--step-size', type=int, default=10,
+                        help="Step size for StepLR (default: 10, required if using 'step' scheduler).")
+    parser.add_argument('--gamma', type=float, default=0.1,
+                        help="Gamma for StepLR (default: 0.1).")
+
     args = parser.parse_args()
 
-    if args.test:
-        # Load the specified model class dynamically
-        model_class = load_model(args.model)
-
-        # Initialize model instance
-        model = model_class()
-
-        # Train the model (you can pass more arguments as needed)
-        test(model)
-
     if args.train:
-        # Load the specified model class dynamically
+        # Load the specified model class
         model_class = load_model(args.model)
 
         # Initialize model instance
-        model = model_class()
+        model = model_class().to('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # Train the model (you can pass more arguments as needed)
-        train(model)
+        # Get the data loaders (implement this function based on your dataset)
+        train_loader, test_loader, val_loader = get_dataloaders()
+
+        # Initialize the Trainer
+        trainer = Trainer(model, train_loader, test_loader,
+                          val_loader, args.epochs)
+
+        # Set up optimizer
+        if args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=args.learning_rate)
+        elif args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(
+                model.parameters(), lr=args.learning_rate)
+        elif args.optimizer == 'rmsprop':
+            optimizer = torch.optim.RMSprop(
+                model.parameters(), lr=args.learning_rate)
+        elif args.optimizer == 'adamw':
+            optimizer = torch.optim.AdamW(
+                model.parameters(), lr=args.learning_rate)
+
+        # default:
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=arg.learning_rate)
+
+        trainer.add_optimizer(optimizer)
+
+        # Set up criterion (assuming CrossEntropyLoss is used; adjust as needed)
+        criterion = torch.nn.CrossEntropyLoss()
+        trainer.add_criterion(criterion)
+
+        # Set up scheduler if specified
+        if args.scheduler == 'step':
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, step_size=args.step_size, gamma=args.gamma)
+            trainer.add_scheduler(scheduler)
+        elif args.scheduler == 'exponential':
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                optimizer, gamma=args.gamma)
+            trainer.add_scheduler(scheduler)
+        elif args.scheduler == 'cosine':
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=args.epochs)
+            trainer.add_scheduler(scheduler)
+
+        # Start training
+        trainer.train()  # Assuming you have a train method in the Trainer class
 
 
 if __name__ == '__main__':
