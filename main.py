@@ -1,5 +1,6 @@
 import argparse
 import importlib
+from utils import test
 from utils.train import Trainer
 from utils.test import Tester
 import torch
@@ -18,6 +19,19 @@ def load_model(model_name):
     except AttributeError:
         print(f"'Model' class not found in {model_name}.py")
         exit(1)
+
+
+def get_dataloaders(name):
+    """Imports the correct dataloader"""
+    train_dataloader = None
+    test_dataloader = None
+    val_dataloader = None
+    match name:
+        case "proof_of_concept":
+            from data.proof_of_concept.dataloaders import train_dataloader, test_dataloader, val_dataloader
+    if train_dataloader is None or test_dataloader is None or val_dataloader is None:
+        raise ValueError("Provide a valid dataset")
+    return train_dataloader, test_dataloader, val_dataloader
 
 
 def main():
@@ -41,6 +55,8 @@ def main():
                         help="Step size for StepLR (default: 10, required if using 'step' scheduler).")
     parser.add_argument('--gamma', type=float, default=0.1,
                         help="Gamma for StepLR (default: 0.1).")
+    parser.add_argument('--dataset', type=str, default="proof_of_concept",
+                        help="Which dataset to load. Possible arguments: 'proof_of_concept'.")
 
     args = parser.parse_args()
 
@@ -52,7 +68,7 @@ def main():
         model = model_class().to('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Get the data loaders (implement this function based on your dataset)
-        train_loader, test_loader, val_loader = get_dataloaders()
+        train_loader, test_loader, val_loader = get_dataloaders(args.dataset)
 
         # Initialize the Trainer
         trainer = Trainer(model, train_loader, test_loader,
@@ -74,7 +90,7 @@ def main():
 
         # default:
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=arg.learning_rate)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
         trainer.add_optimizer(optimizer)
 
