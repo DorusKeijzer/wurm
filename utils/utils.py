@@ -16,7 +16,7 @@ def plot_loss_and_accuracy(losses, accuracies):
     plt.style.use('dark_background')
 
     # Create a figure and an axis
-    fig, ax1 = plt.subplots(figsize=(10, 6))
+    _, ax1 = plt.subplots(figsize=(10, 6))
 
     # Plot loss with pastel red
     color = '#AF3F31'  # Pastel red

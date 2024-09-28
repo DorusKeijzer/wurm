@@ -8,8 +8,7 @@ import os
 import io
 import sys
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from utils import plot_loss_and_accuracy, format_time
-
+from .utils import plot_loss_and_accuracy, format_time
 from time import perf_counter
 
 
@@ -58,6 +57,7 @@ class Trainer:
         return summary_str
 
     def post_training(self):
+        """Gets the test accuracy and writes training history to a file"""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         plot = plot_loss_and_accuracy(self.losses, self.accuracies)
         resultsdir = os.path.join(os.getcwd(), "results")
@@ -118,7 +118,6 @@ class Trainer:
         def handle_interruption():
             print("\nTraining interrupted. Choose an option:")
             print("1. Save the self.model")
-            print("2. Save progress graph")
             print("3. Change learning rate")
             print("4. Exit training (save)")
             print("5. Exit training (don't save)")
@@ -129,17 +128,15 @@ class Trainer:
                 torch.save(self.model.state_dict(), 'model.pth')
                 print("self.model saved.")
             elif choice == '2':
-                evaluate_self.model()
-            elif choice == '3':
                 new_lr = float(input("Enter new learning rate: "))
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = new_lr
                 print(f"Learning rate changed to {new_lr}")
-            elif choice == '4':
+            elif choice == '3':
                 print("Exiting training...")
                 self.post_training()
                 sys.exit(0)
-            elif choice == '5':
+            elif choice == '4':
                 print("Exiting training...")
                 sys.exit(0)
             else:
@@ -153,7 +150,7 @@ class Trainer:
             running_loss = 0.0
             for i, (images, labels) in enumerate(self.train_dataloader):
                 print(f"Epoch [ {epoch+1}/{self.num_epochs} ], Batch [ {
-                      i*self.train_dataloader.batch_size}/{len(train_dataloader.dataset)} ]", end="\r")
+                      i*self.train_dataloader.batch_size}/{len(self.train_dataloader.dataset)} ]", end="\r")
                 if interrupted:
                     handle_interruption()
                     interrupted = False  # Reset the flag after handling

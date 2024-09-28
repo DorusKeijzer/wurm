@@ -1,9 +1,8 @@
 
-import torch
 from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
 
 
-class FRCNN():
+class Model():
     # Load the pre-trained Faster R-CNN model
     weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
     model = fasterrcnn_resnet50_fpn_v2(weights=weights)

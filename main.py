@@ -2,7 +2,6 @@ import argparse
 import importlib
 from utils import test
 from utils.train import Trainer
-from utils.test import Tester
 import torch
 
 
@@ -40,8 +39,8 @@ def main():
     parser.add_argument('--train', action='store_true',
                         help="Flag to train the model.")
     parser.add_argument('--model', type=str, required=True,
-                        help="Specify the model name (e.g., 'model_a').")
-    parser.add_argument('--epochs', type=int, default=10,
+                        help="Specify the model name (e.g., 'FRCCN').")
+    parser.add_argument('--epochs', type=int, required=True,
                         help="Number of epochs to train (default: 10).")
     parser.add_argument('--optimizer', type=str, default='adam',
                         choices=['adam', 'sgd', 'rmsprop', 'adamw'],
