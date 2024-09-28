@@ -11,7 +11,7 @@ This project's dependencies are managed by [Poetry](https://python-poetry.org/)
 2. Install Poetry using one of these methods:
 
    - On macOS, Linux, or Windows (WSL):
-     ```sh
+     ```bash
      curl -sSL https://install.python-poetry.org | python3 -
      ```
 
@@ -21,17 +21,19 @@ This project's dependencies are managed by [Poetry](https://python-poetry.org/)
      ```
 
 3. Verify the installation:
-   ```sh
+   ```bash
    poetry --version
    ```
 
 ## Running main.py with Poetry
-1. install dependencies:
-   ```sh
+In the root directory:
+
+1. install dependencies (this takes a while):
+   ```bash
    poetry install
    ```
 2. Run `main.py` using Poetry:
-   ```sh
+   ```bash
    poetry run python main.py
    ```
 
