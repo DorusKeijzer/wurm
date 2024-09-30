@@ -10,6 +10,7 @@ import sys
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from .utils import plot_loss_and_accuracy, format_time
 from time import perf_counter
+from contextlib import contextmanager
 
 
 class Trainer:
@@ -106,106 +107,130 @@ class Trainer:
         torch.save(self.model.state_dict(), best_filename)
 
     def train(self):
-        # Variable to track the interruption
         interrupted = False
 
         def signal_handler(sig, frame):
-            global interrupted
+            nonlocal interrupted
             interrupted = True
-        # Register the signal handler
+
         signal.signal(signal.SIGINT, signal_handler)
 
-        def handle_interruption():
-            print("\nTraining interrupted. Choose an option:")
-            print("1. Save the self.model")
-            print("3. Change learning rate")
-            print("4. Exit training (save)")
-            print("5. Exit training (don't save)")
-
-            choice = input("Enter your choice: ")
-
-            if choice == '1':
-                torch.save(self.model.state_dict(), 'model.pth')
-                print("self.model saved.")
-            elif choice == '2':
-                new_lr = float(input("Enter new learning rate: "))
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = new_lr
-                print(f"Learning rate changed to {new_lr}")
-            elif choice == '3':
-                print("Exiting training...")
-                self.post_training()
-                sys.exit(0)
-            elif choice == '4':
-                print("Exiting training...")
-                sys.exit(0)
-            else:
-                print("Invalid choice. Continuing training.")
-
-        old_lr = self.scheduler.get_last_lr()
-        # Training loop
         for epoch in range(self.num_epochs):
             start = perf_counter()
-            self.model.train()  # Set the model to training mode
+
+            self.train_epoch(epoch, interrupted)
+            val_loss = self.validate()
+
+            self.update_metrics(epoch, val_loss, start)
+
+        self.post_training()
+
+    def train_epoch(self, epoch, interrupted):
+        with self.train_mode():
             running_loss = 0.0
             for i, (images, labels) in enumerate(self.train_dataloader):
-                print(f"Epoch [ {epoch+1}/{self.num_epochs} ], Batch [ {
-                      i*self.train_dataloader.batch_size}/{len(self.train_dataloader.dataset)} ]", end="\r")
+                self.print_progress(epoch, i)
                 if interrupted:
-                    handle_interruption()
-                    interrupted = False  # Reset the flag after handling
-                images, labels = images.to(self.device), labels.to(
-                    self.device)  # Move data to the appropriate device
-                self.optimizer.zero_grad()  # Zero the parameter gradients
-                outputs = self.model(images)  # Forward pass
-                loss = self.criterion(outputs, labels)  # Compute the loss
-                loss.backward()  # Backward pass
-                self.optimizer.step()  # Update the weights
+                    self.handle_interruption()
+                    interrupted = False
 
-                running_loss += loss.item()
+                running_loss += self.train_batch(images, labels)
 
-            # Validation phase
-            self.model.eval()
-            val_loss = 0.0
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for images, labels in self.val_dataloader:
-                    images, labels = images.to(self.device), labels.to(
-                        self.device)  # Move data to the appropriate device
-                    outputs = self.model(images)
-                    loss = self.criterion(outputs, labels)
-                    val_loss += loss.item()
+        return running_loss
 
-                    _, predicted = torch.max(outputs.data, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
+    @contextmanager
+    def train_mode(self):
+        self.model.train()
+        yield
+        self.model.eval()
 
-            val_loss /= len(self.val_dataloader)
-            self.scheduler.step(val_loss)
+    def train_batch(self, images, labels):
+        images, labels = images.to(self.device), labels.to(self.device)
+        self.optimizer.zero_grad()
+        outputs = self.model(images)
+        loss = self.criterion(outputs, labels)
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
 
-            lr = self.scheduler.get_last_lr()
-            loss = running_loss / len(self.train_dataloader)
-            accuracy = 100 * correct / total
-            if accuracy > self.best_accuracy:
-                self.best_accuracy = accuracy
-                self.best_model = self.model
-            self.losses.append(loss)
-            self.accuracies.append(accuracy)
+    def validate(self):
+        val_loss = 0.0
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for images, labels in self.val_dataloader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                loss = self.criterion(outputs, labels)
+                val_loss += loss.item()
 
-            end = perf_counter()
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
-            expected_time_left = (self.num_epochs - epoch - 1) * (end - start)
+        val_loss /= len(self.val_dataloader)
+        accuracy = 100 * correct / total
+        return val_loss, accuracy
 
-            print(f"Epoch [ {epoch+1}/{self.num_epochs} ]")
-            print(f"Loss:                {loss:>7.2f}")
-            print(f"Accuracy:            {accuracy:>7.2f} %")
-            print(f"Validation Loss:     {val_loss:>7.2f}")
-            if format_time(expected_time_left):
-                print(f"Expected time left:     {
-                      format_time(expected_time_left):>7}")
-            if old_lr != lr:
-                old_lr = lr
-                print(f"Plateaued, decreased learning rate to {old_lr}")
-            print("")
-        self.post_training()
+    def update_metrics(self, epoch, val_loss, start_time):
+        self.scheduler.step(val_loss)
+        lr = self.scheduler.get_last_lr()[0]
+        loss = sum(self.losses) / len(self.train_dataloader)
+        accuracy = self.accuracies[-1]
+
+        if accuracy > self.best_accuracy:
+            self.best_accuracy = accuracy
+            self.best_model = self.model.state_dict()
+
+        end = perf_counter()
+        expected_time_left = (self.num_epochs - epoch - 1) * (end - start_time)
+
+        self.print_epoch_summary(
+            epoch, loss, accuracy, val_loss, lr, expected_time_left)
+
+    def print_epoch_summary(self, epoch, loss, accuracy, val_loss, lr, expected_time_left):
+        print(f"\nEpoch [{epoch+1}/{self.num_epochs}]")
+        print(f"Loss: {loss:.2f}")
+        print(f"Accuracy: {accuracy:.2f}%")
+        print(f"Validation Loss: {val_loss:.2f}")
+        print(f"Learning Rate: {lr:.6f}")
+        print(f"Expected time left: {format_time(expected_time_left)}")
+
+    def handle_interruption(self):
+        print("\nTraining interrupted. Choose an option:")
+        print("1. Save the model")
+        print("2. Change learning rate")
+        print("3. Exit training (save)")
+        print("4. Exit training (don't save)")
+
+        choice = input("Enter your choice: ")
+
+        if choice == '1':
+            self.save_model()
+        elif choice == '2':
+            self.change_learning_rate()
+        elif choice == '3':
+            self.save_model()
+            sys.exit(0)
+        elif choice == '4':
+            sys.exit(0)
+        else:
+            print("Invalid choice. Continuing training.")
+
+    def save_model(self, path='model.pth'):
+        torch.save(self.model.state_dict(), path)
+        print(f"Model saved to {path}")
+
+    def change_learning_rate(self):
+        try:
+            new_lr = float(input("Enter new learning rate: "))
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = new_lr
+            print(f"Learning rate changed to {new_lr}")
+        except ValueError:
+            print("Invalid learning rate. Continuing with current rate.")
+
+    def print_progress(self, epoch, batch):
+        print(f"Epoch [{epoch+1}/{self.num_epochs}], "
+              f"Batch [{batch*self.train_dataloader.batch_size}/"
+              f"{len(self.train_dataloader.dataset)}]", end="\r")
