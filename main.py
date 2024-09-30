@@ -1,18 +1,30 @@
 import argparse
 import importlib
-from utils import test
 from utils.train import Trainer
 import torch
+import os
+import logging
+
+# set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+logger = logging.getLogger(__name__)
 
 
 def load_model(model_name):
     """Dynamically load the model class from models directory."""
+    logger.info(f"Looking for model in {
+                os.path.join(os.getcwd(), 'models/')}")
     try:
         module = importlib.import_module(f'models.{model_name}')
         # assuming the class is named 'Model'
         model_class = getattr(module, 'Model')
         return model_class
     except ModuleNotFoundError:
+        print(os.listdir(os.path.join(os.getcwd(), 'models')))
         print(f"Model {model_name} not found in models/ directory.")
         exit(1)
     except AttributeError:
@@ -64,8 +76,8 @@ def main():
         model_class = load_model(args.model)
 
         # Initialize model instance
-        model = model_class().to('cuda' if torch.cuda.is_available() else 'cpu')
-
+        model = model_class()
+        print(f"Loaded model {model}")
         # Get the data loaders (implement this function based on your dataset)
         train_loader, test_loader, val_loader = get_dataloaders(args.dataset)
 
